@@ -13,6 +13,7 @@
 *   **Non-Goals:**
     *   Pitch detection from raw audio (delegated to `basic-pitch`).
     *   Rendering sheet music to PDF (delegated to standard notation software like MuseScore).
+    *   Generating guitar/ukulele tabs.
 *   **Prior Art & Glossary:**
     *   `basic-pitch`: ML model for audio-to-MIDI.
     *   `music21`: Python library for computer-aided musicology.
@@ -37,10 +38,22 @@
     5.  **Stage 4 (Staves & Voices):** Split pitches into treble/bass (static threshold or contour-based), group into chords, assign to polyphonic voices, calculate rests.
     6.  **Stage 5 (Export):** Assemble `ScoreIR` and write out via custom XML builder or `music21`.
 *   **Architecture Diagram:** N/A
-*   **Core Components:**
-    *   `Config`: Dataclass holding all heuristics and thresholds.
-    *   `TempoMap`: Monotone piecewise-linear map translating seconds to beats.
-    *   `assign_staves` & `build_voices`: Greedy interval coloring algorithms for notation layout.
+
+### Features
+
+| Feature / Challenge | What It Solves | Core Technique / Algorithm |
+| :--- | :--- | :--- |
+| **Denoising & Ghost Notes** | Removes acoustic string buzz, overtone glitches, and accidental finger grazes. | Filters notes with low velocity **AND** short duration (< 80 ms). |
+| **Unison Merging** | Fixes rapid double-trigger glitches (when the model splits one struck note into two). | Merges same-pitch notes that occur within a micro-window (< 30 ms). |
+| **Elastic Rubato Tracking** | Prevents expressive timing and speed changes from turning into ugly tuplets/32nd notes. | **PLL (Phase-Locked Loop)** maps flexible performance time onto elastic beat grids. |
+| **Tempo Baseline** | Determines overall average BPM from unquantized performance. | **IOI (Inter-Onset Interval) + KDE (Kernel Density Estimation)** peak finding. |
+| **Time Signature Detection** | Determines measure boundaries (2/4, 3/4, 4/4, 6/8) automatically. | **Accent Periodicity** (analyzing velocity emphasis and low-bass hit intervals). |
+| **Key Signature & Spelling** | Prevents writing notes as incorrect accidentals (e.g., C♯ vs. D♭). | **Krumhansl-Schmuckler algorithm** (duration-weighted pitch-class profiles). |
+| **Pedal vs. Finger Hold** | Prevents sustained resonance from creating overlapping "notation soup." | Detects new chord attacks, caps sustained chord tones, and inserts explicit `Ped.` / `*` marks (or `let ring` / tied notes). |
+| **Voice Separation** | Assigns notes cleanly to the right staves or stem directions, avoiding rigid Middle C split traps and multi-line clutter. | **Piano (Two Staves):** Dynamic Hand Contour Tracking (tracks moving pitch clusters + hand-reach limits across staves).<br><br>**Guitar / Ukulele (Single Staff):** Stem Direction Assignment (lowest active line to Voice 2 stems DOWN; higher lines to Voice 1 stems UP). |
+| **Octave Transposition** | Prevents guitar notes from sitting on ugly ledger lines below the staff. | Shifts MIDI pitches up 12 semitones to match standard octave-down guitar clef notation. |
+| **Strum Aggregation** | Prevents sequential pick/finger sweeps across strings from rendering as staggered micro-rhythms. | Groups different pitches starting within a wider micro-onset window (30 ms–50 ms) into a single vertical chord. |
+
 
 ## 5. System Interface
 *   **HTTP/REST/gRPC Endpoints:** N/A
@@ -125,7 +138,4 @@
     *   **ML transcription accuracy:** The pipeline assumes the upstream ML model (`basic-pitch`) outputs reasonably accurate pitch and onset data. It does not attempt to correct fundamental pitch-detection errors made by the model.
 
 ## 15. Timeline & Phases
-*   **Phases:** 
-    *   *Phase 1:* Core pipeline logic (Stages 1-4) and JSON/MIDI adapters.
-    *   *Phase 2:* Custom, dependency-free MusicXML writer (`write_musicxml_basic`).
-    *   *Phase 3:* Integration with `basic-pitch` for end-to-end audio transcription.
+
