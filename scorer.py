@@ -26,34 +26,86 @@ class Preprocessor:
         self.min_duration = min_duration
         self.min_velocity = min_velocity
 
+    def sanitize_notes(self, notes: List[Note]) -> List[Note]:
+        """
+        Validates and sanitizes raw note events before processing.
+        
+        Checks for:
+        - None / empty input
+        - Out-of-bounds MIDI pitches (0-127) and float/NaN pitches
+        - Inverted or zero-length durations (end <= start)
+        - Negative timestamps
+        - Output velocity is strictly 0.0 to 1.0 float
+        """
+
+        if not notes:
+            return []
+
+        sanitized = []
+        
+        for note in notes:
+            if note is None:
+                continue
+
+            try:
+                pitch = int(round(note.pitch))
+            except (ValueError, TypeError):
+                continue 
+                
+            if not (0 <= pitch <= 127):
+                continue 
+
+            start = max(0.0, float(note.start))
+            end = float(note.end)
+            
+            if end <= start:
+                continue 
+
+            vel = float(note.velocity)
+
+            vel = max(0.0, min(1.0, vel))  
+
+            if vel == 0.0:
+                continue
+
+            sanitized.append(Note(start=start, end=end, pitch=pitch, velocity=vel))
+
+        return sanitized
+
     def merge_unisons(self, notes: List[Note]) -> List[Note]:
         """
         Merges same-pitch notes that trigger in rapid succession (< 30ms gap).
         This helps to correct for split notes caused by Basic Pitch's sensitivity.
         """
 
-        if not notes:
-            return []
+        sorted_notes = sorted(notes, key=lambda n: (n.pitch, n.start))
+    
+        merged_notes = [
+            Note(
+                start=sorted_notes[0].start,
+                end=sorted_notes[0].end,
+                pitch=sorted_notes[0].pitch,
+                velocity=sorted_notes[0].velocity
+            )
+        ]
 
-        by_pitch = {}
-        for note in sorted(notes, key=lambda n: (n.pitch, n.start)):
-            by_pitch.setdefault(note.pitch, []).append(note)
+        for next_note in sorted_notes[1:]:
+            last_note = merged_notes[-1]
 
-        merged_notes = []
-        for _, pitch_notes in by_pitch.items():
-            current_group = pitch_notes[0]
-            
-            for next_note in pitch_notes[1:]:
-                gap = next_note.start - current_group.end
-                if gap < self.unison_gap_threshold:
-                    current_group.end = max(current_group.end, next_note.end)
-                    # Retain the highest velocity in the merged group to ensure the note's prominence is preserved
-                    current_group.velocity = max(current_group.velocity, next_note.velocity)
-                else:
-                    merged_notes.append(current_group)
-                    current_group = next_note
-                    
-            merged_notes.append(current_group)
+            if (next_note.pitch == last_note.pitch and 
+                (next_note.start - last_note.end) < self.unison_gap_threshold):
+                
+                last_note.end = max(last_note.end, next_note.end)
+                last_note.velocity = max(last_note.velocity, next_note.velocity)
+            else:
+                merged_notes.append(
+                    Note(
+                        start=next_note.start,
+                        end=next_note.end,
+                        pitch=next_note.pitch,
+                        velocity=next_note.velocity
+                    )
+                )
 
         return sorted(merged_notes, key=lambda n: (n.start, n.pitch))
 
@@ -63,22 +115,16 @@ class Preprocessor:
         that are BOTH low velocity AND short duration.
         """
 
-        cleaned = []
-        for note in notes:   
-            # Preserves soft long sustained notes and fast loud staccatos
-            if note.duration < self.min_duration and note.velocity < self.min_velocity:
-                continue
-                
-            cleaned.append(note)
+        # Preserves soft long sustained notes and fast loud staccatos by evaluating both duration AND velocity.
+        cleaned = [note for note in notes if not (note.duration < self.min_duration and note.velocity < self.min_velocity)]
             
         return cleaned
 
     def process(self, raw_notes: List[Note]) -> List[Note]:
         """Runs the complete pre-processing pipeline."""
-        # Step 1: Fix split notes first so fragments aren't accidentally deleted
-        merged = self.merge_unisons(raw_notes)
-        
-        # Step 2: Clean up acoustic noise and ghost notes
+
+        sanitized = self.sanitize_notes(raw_notes)
+        merged = self.merge_unisons(sanitized)
         cleaned = self.filter_noise_and_ghosts(merged)
         
         return cleaned
