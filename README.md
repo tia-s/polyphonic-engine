@@ -44,7 +44,7 @@ pip install numpy scipy
 
 ## Quickstart
 
-Note: Requires **Python 3.10** or **3.11** (64-bit).
+Note: Requires **Python 3.11** (64-bit).
 
 ```bash
 # Process audio directly to MusicXML
