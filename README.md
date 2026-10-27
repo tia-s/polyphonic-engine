@@ -37,48 +37,22 @@ pip install numpy scipy
 ```
 
 ### Optional Dependencies
-Depending on your input files and preferred export engine:
 * `basic-pitch` — Required for transcribing raw `.wav` or `.mp3` audio files.
-* `pretty_midi` — Required for reading `.mid` inputs.
 * `music21` — Optional advanced MusicXML export engine.
 
 ---
 
 ## Quickstart
 
-### Command Line Interface
-
-Process an audio, MIDI, or pre-extracted JSON file directly:
+Note: Requires **Python 3.10** or **3.11** (64-bit).
 
 ```bash
 # Process audio directly to MusicXML
-python main.py input_audio.wav --output score.musicxml
-
-# Process with explicit grid settings and staff mode
-python main.py transcription.json --staff-mode piano --grid 16th
+python scorer.py -i input_audio.wav --o score.musicxml
 ```
 
-### Python API Usage
+<img src="assets/terminal-demo.gif" width="960" height="540" alt="terminal-demo" />
 
-```python
-from preprocessor import Preprocessor, Note
-
-# 1. Define or load raw notes from Basic Pitch output
-raw_notes = [
-    Note(start=0.0, end=0.50, pitch=60, velocity=0.8),
-    Note(start=0.5, end=0.72, pitch=67, velocity=0.7),
-    Note(start=0.73, end=1.00, pitch=67, velocity=0.6),  # Unison glitch
-    Note(start=1.2, end=1.25, pitch=61, velocity=0.08), # Ghost note
-]
-
-# 2. Run Preprocessor Cleaning
-preprocessor = Preprocessor()
-cleaned_notes = preprocessor.process(raw_notes)
-
-# 3. Execute Pipeline to ScoreIR & Export
-# score_ir, report = run_pipeline(cleaned_notes)
-# export(score_ir, "output_score.musicxml")
-```
 
 ---
 

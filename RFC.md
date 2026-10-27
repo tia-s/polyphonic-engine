@@ -20,7 +20,7 @@
     *   **IR:** Intermediate Representation (specifically `ScoreIR` in this codebase).
 
 ## 2. Requirements
-*   **Functional:** The script must take an audio file, a MIDI file, or a JSON list of note events, run a 5-stage cleaning and quantization pipeline, and output a valid `.musicxml` file.
+*   **Functional:** The script must take an audio file, run a 5-stage cleaning and quantization pipeline, and output a valid `.musicxml` file.
 *   **Latency & Throughput:** Must process a typical 3-5 minute song in a few seconds on a standard laptop CPU.
 
 ## 3. Capacity & Scale Expectations
@@ -31,7 +31,7 @@
 
 ## 4. Proposed Architecture
 *   **High-Level Design:** 
-    1.  **Input Adapter:** Reads JSON, MIDI, or runs `basic-pitch` on audio.
+    1.  **Input Adapter:** Runs `basic-pitch` on audio.
     2.  **Stage 1 (Clean):** De-noise, merge unisons, cap legato overlaps, and clean up pedal blur.
     3.  **Stage 2 (Tempo):** Estimate IOI (Inter-Onset Intervals) via log-domain KDE, build a PLL tempo map, detect time signature and downbeats.
     4.  **Stage 3 (Quantize):** Map seconds to beats, snap to grid (e.g., 16th notes).
@@ -62,8 +62,7 @@
     *   `run_pipeline(notes: list[Note], cfg: Config) -> tuple[ScoreIR, Report]`
     *   `export(ir: ScoreIR, path: str, backend: str) -> str`
 *   **CLI Interface:** 
-    *   `input`: Filepath (.wav, .mp3, .mid, .json).
-    *   Flags: `--bpm`, `--grid`, `--split`, `--staff-mode`, `--max-voices`, `--key-sharps`, `--detect-pickup`.
+    *   Flags: `--input`, `--output`, `--bpm`, `--grid`, `--split`, `--staff-mode`, `--max-voices`, `--key-sharps`, `--detect-pickup`.
 *   **Versioning & Compatibility:** N/A
 
 ## 6. Data Design
@@ -118,13 +117,7 @@
 *   **Deployment Strategy:** Distributed via Git repository.
 *   **Rollback Plan:** Revert to a previous Git commit if a bug is introduced.
 
-## 13. Testing Strategy
-*   **Unit & Integration Tests:** 
-    *   Stages 1-4 can be unit tested purely with JSON input (using the `--dump-notes` feature to cache ML output) to ensure `numpy` math, quantization logic, and tie-splitting (`split_notatable`) work without requiring audio processing or `basic-pitch` setup.
-*   **Load & Stress Testing:** N/A
-*   **Failure Testing:** N/A
-
-## 14. Risks & Open Questions
+## 13. Risks & Open Questions
 -   **Risks:** 
     *   **Anacrusis detection:** The pickup measure detection is highly experimental and will likely fail on heavily syncopated tracks. 
     *   **Physical playability:** The `contour` staff-splitting algorithm evaluates pitch proximity rather than instrument mechanics. Applying this to guitar or ukulele might produce physically unplayable chord voicings or ignore string-spanning constraints.
@@ -136,6 +129,4 @@
 -   **Assumptions:** 
     *   **Single-instrument audio:** The pipeline assumes the input audio contains a single polyphonic instrument. Feeding it mixed ensemble audio (e.g., a full band) will collapse all instruments into a single, chaotic note stream.
     *   **ML transcription accuracy:** The pipeline assumes the upstream ML model (`basic-pitch`) outputs reasonably accurate pitch and onset data. It does not attempt to correct fundamental pitch-detection errors made by the model.
-
-## 15. Timeline & Phases
 

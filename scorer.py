@@ -1,4 +1,9 @@
+import argparse
+import sys
+
+from basic_pitch.inference import predict
 from dataclasses import dataclass
+from music21 import stream, note as m21_note
 from typing import List
 
 @dataclass
@@ -13,7 +18,6 @@ class Note:
     def duration(self) -> float:
         return self.end - self.start
 
-
 class Preprocessor:
     """Pre-processing pipeline for Basic Pitch output to clean up noise."""
     def __init__(
@@ -25,6 +29,22 @@ class Preprocessor:
         self.unison_gap_threshold = unison_gap_threshold
         self.min_duration = min_duration
         self.min_velocity = min_velocity
+
+    def predict_audio_to_notes(self, audio_path: str) -> List[Note]:
+        """Runs Spotify's Basic Pitch on an audio file and converts output to Note objects."""
+        # Predict returns: (model_output, midi_data, note_events)
+        _, _, note_events = predict(audio_path)
+        print(f"Predicting midi for {audio_path}...")
+
+        return [
+            Note(
+                start=float(start),
+                end=float(end),
+                pitch=int(round(pitch)),
+                velocity=float(amplitude),
+            )
+            for start, end, pitch, amplitude, _ in note_events
+        ]
 
     def sanitize_notes(self, notes: List[Note]) -> List[Note]:
         """
@@ -120,42 +140,56 @@ class Preprocessor:
             
         return cleaned
 
-    def process(self, raw_notes: List[Note]) -> List[Note]:
+    def export_to_musicxml(self, notes: List[Note], output_path: str):
+        score = stream.Score()
+        part = stream.Part()
+        
+        BPM = 120
+        QUARTER_NOTES_PER_SECOND = BPM / 60.0
+        GRID_STEP = 0.25
+
+        for n in notes:
+            m_note = m21_note.Note(n.pitch)
+            
+            raw_offset = n.start * QUARTER_NOTES_PER_SECOND
+            raw_duration = n.duration * QUARTER_NOTES_PER_SECOND
+            
+            offset = round(raw_offset / GRID_STEP) * GRID_STEP
+            duration = max(GRID_STEP, round(raw_duration / GRID_STEP) * GRID_STEP)
+            
+            m_note.quarterLength = duration
+            part.insert(offset, m_note)
+            
+        score.append(part.makeMeasures())
+        score.write("musicxml", fp=output_path)
+        print(f"Sheet music exported to {output_path}")
+
+    def process(self, audio_path: List[Note], output_path: str="output.musicxml") -> List[Note]:
         """Runs the complete pre-processing pipeline."""
 
+        raw_notes = self.predict_audio_to_notes(audio_path)
         sanitized = self.sanitize_notes(raw_notes)
         merged = self.merge_unisons(sanitized)
         cleaned = self.filter_noise_and_ghosts(merged)
-        
-        return cleaned
-
-
+        self.export_to_musicxml(cleaned, output_path=output_path)
 
 if __name__ == "__main__":
-    # Sample raw note events from Basic Pitch output
-    sample_data = [
-        # 1. Normal note (Middle C)
-        Note(start=0.0, end=0.50, pitch=60, velocity=0.8),
-        
-        # 2. Glitch: Rapid double-trigger of G4 (should be merged into one ~0.5s note)
-        Note(start=0.5, end=0.72, pitch=67, velocity=0.7),
-        Note(start=0.73, end=1.00, pitch=67, velocity=0.6), # 10ms gap (< 30ms)
-        
-        # 3. Acoustic Ghost Note / Fret Buzz (should be dropped: < 80ms AND < 0.15 vel)
-        Note(start=1.2, end=1.25, pitch=61, velocity=0.08),
-        
-        # 4. Soft sustained note (should be KEPT: soft, but long duration)
-        Note(start=1.5, end=2.50, pitch=48, velocity=0.10),
-        
-        # 5. Fast loud staccato (should be KEPT: short, but loud velocity)
-        Note(start=2.6, end=2.65, pitch=72, velocity=0.85),
-    ]
+    parser = argparse.ArgumentParser(description="Polyphonic Scorer CLI")
+    
+    parser.add_argument(
+        "-i", "--input",
+        type=str,
+        required=True,
+        help="Path to input audio file (.wav, .mp3)"
+    )
+    parser.add_argument(
+        "-o", "--output",
+        type=str,
+        default="output.musicxml",
+        help="Path for the exported MusicXML file (default: output.musicxml)"
+    )
+
+    args = parser.parse_args()
 
     preprocessor = Preprocessor()
-    result = preprocessor.process(sample_data)
-
-    print(f"Raw Input Notes Count: {len(sample_data)}")
-    print(f"Cleaned Notes Count:   {len(result)}\n")
-    print("Cleaned Notes Output:")
-    for n in result:
-        print(f"  Pitch: {n.pitch} | Start: {n.start:.2f}s | End: {n.end:.2f}s | Dur: {n.duration:.2f}s | Vel: {n.velocity:.2f}")
+    result = preprocessor.process(audio_path=args.input, output_path=args.output)

@@ -1,0 +1,42 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# Project output files
+*.musicxml
+*.xml
+*.mid
+*.midi
+
+# Audio test files
+*.wav
+*.mp3
+*.flac
+*.m4a
+*.ogg
+
+# IDE & Editor settings
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS generated files
+.DS_Store
+.DS_Store?
+ehthumbs.db
+Thumbs.db
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
